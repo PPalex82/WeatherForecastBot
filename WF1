@@ -1,0 +1,84 @@
+import telebot
+import requests
+import json
+from googletrans import Translator
+
+bot = telebot.TeleBot('6348104745:AAFf_BknzcuQCKL4rnQo8DEdIK6Tv1lB-hU')
+API = 'a51f70434804eb3cc861b5377a808aa5'
+
+# Словарь для хранения языковых настроек
+user_language = {}
+
+
+@bot.message_handler(commands=['start'])
+def main(message):
+    bot.send_message(message.chat.id, 'Привет, напиши название своего города\n'
+                                      '/setlanguage - выбор языка')
+
+
+@bot.message_handler(commands=['setlanguage'])
+def set_language(message):
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=2)
+    markup.add('English', 'Deutsch', 'Español', 'Français')
+    msg = bot.send_message(message.chat.id, 'Please select your language:', reply_markup=markup)
+    bot.register_next_step_handler(msg, process_language_selection)
+
+
+def process_language_selection(message):
+    chat_id = message.chat.id
+    language = message.text.lower()
+    if language == 'english':
+        user_language[chat_id] = 'en'
+    elif language == 'deutsch':
+        user_language[chat_id] = 'de'
+    elif language == 'español':
+        user_language[chat_id] = 'es'
+    elif language == 'français':
+        user_language[chat_id] = 'fr'
+    else:
+        bot.send_message(chat_id, 'Invalid language selection. Please try again.')
+        return
+
+    bot.send_message(chat_id, 'Language set to ' + language.capitalize())
+
+
+@bot.message_handler(content_types=['text'])
+def get_weather(message):
+    chat_id = message.chat.id
+    city = message.text.strip().lower()
+    res = requests.get(f'https://api.openweathermap.org/data/2.5/weather?q={city}&appid={API}&units=metric')
+
+    if res.status_code == 200:
+        data = json.loads(res.text)
+        pressure = data["main"]["pressure"]
+        humidity = data["main"]["humidity"]
+        speed = data["wind"]["speed"]
+        temp_min = data["main"]["temp_min"]
+        temp_max = data["main"]["temp_max"]
+        feels_like = data["main"]["feels_like"]
+        temp = data["main"]["temp"]
+
+        translator = Translator()
+
+        language = user_language.get(chat_id, 'en')
+        if language != 'en':
+            translation = translator.translate(f'current temperature: {temp:.0f} °c\\nfeels like: {feels_like:.0f} °c'
+            f'\\nminimum temperature today: {temp_min:.0f} °c\\nmaximum temperature today: {temp_max:.0f} °c'
+            f'\\nwind speed: {speed:.0f} m/s\\nhumidity: {humidity:.0f} %\\npressure: {pressure * 0.75:.0f} mm hg',
+            dest = language)
+
+        else:
+            translation = f'Current temperature: {temp:.0f} °C\nFeels like: {feels_like:.0f} °C' \
+                          f'\nMinimum temperature today: {temp_min:.0f} °C\nMaximum temperature today: {temp_max:.0f} °C' \
+                          f'\nWind speed: {speed:.0f} m/s\nHumidity: {humidity:.0f} %\nPressure: {pressure * 0.75:.0f} mm Hg'
+
+        bot.reply_to(message, translation)
+
+        if temp > 5.0:
+            bot.reply_to(message, '☀️')
+        else:
+            bot.reply_to(message, '⛅')
+    else:
+        bot.reply_to(message, 'Город указан не верно')
+
+bot.polling()
