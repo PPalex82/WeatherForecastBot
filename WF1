@@ -1,7 +1,6 @@
 import telebot
 import requests
 import json
-import pycountry
 from iso3166 import countries
 
 bot = telebot.TeleBot('6348104745:AAFf_BknzcuQCKL4rnQo8DEdIK6Tv1lB-hU')
@@ -9,9 +8,29 @@ API = 'a51f70434804eb3cc861b5377a808aa5'
 
 @bot.message_handler(commands=['start'])
 def main(message):
-    bot.send_message(message.chat.id, 'Привет, напиши название своего города')
+    bot.send_message(message.chat.id, 'Привет👋, введите название своего города\nи я покажу тебе текущие данные о погоде☂️, и прогноз🌡️ на ближайшие дни')
 
 @bot.message_handler(content_types=['text'])
+def get_forecast(message):
+    city = message.text.strip().lower()
+    res = requests.get(f'https://api.openweathermap.org/data/2.5/forecast?q={city}&appid={API}&units=metric')
+    if res.status_code == 200:
+        data = json.loads(res.text)["list"][:5]  # Получаем данные только на первые 5 дней
+        forecast_data = []
+        for day in data:
+            date = day["dt_txt"].split()[0]  # Получаем только дату без времени
+            temp_min = day["main"]["temp_min"]  # Получаем минимальную температуру
+            temp_max = day["main"]["temp_max"]  # Получаем максимальную температуру
+            weather = day["weather"][0]["main"]
+            forecast_data.append((date, temp_min, temp_max, weather))  # Добавляем в список мин./макс. температуры
+
+        get_weather(message)  # Получаем текущую погоду
+        response = '\n\nПрогноз температуры на 5 дней:\n'
+        for date, temp_min, temp_max, weather in forecast_data:
+            response += f'От {temp_min:.0f} °C До {temp_max:.0f} °C\n'
+        bot.reply_to(message, response)
+    else:
+        bot.reply_to(message, 'Город указан не верно')
 def get_weather(message):
     city = message.text.strip().lower()
     res = requests.get(f'https://api.openweathermap.org/data/2.5/weather?q={city}&appid={API}&units=metric')
@@ -31,8 +50,8 @@ def get_weather(message):
         region = data.get("name", "")  # Добавлено получение информации о провинции/области
 
         response = (f'{country_name}, {region} - Погода на сегодня😉:\nНа данный момент температура: {temp:.0f} °C\nОщущается как: {feels_like:.0f} °C'
-                              f'\nМинимальная температура сегодня: {temp_min:.0f} °C\nМаксимальная температура сегодня: {temp_max:.0f} °C'
-                              f'\nСкорость ветра: {speed:.0f} км/ч\nВлажность: {humidity:.0f} %\nДавление: {pressure * 0.75:.0f} мм рт ст')
+                              f'\nСегодня температура от {temp_min:.0f} °C до {temp_max:.0f} °C'
+                              f'\nСкорость ветра: {speed:.0f} м/с\nВлажность: {humidity:.0f} %\nДавление: {pressure * 0.75:.0f} мм рт ст')
         if weather.lower() == 'rain':
             response += '\nИдёт дождь. Не забудьте зонт☔'
             bot.reply_to(message, response)
@@ -49,7 +68,10 @@ def get_weather(message):
             response += '\nПойдёт снег!'
             bot.reply_to(message, response)
             bot.send_message(message.chat.id, '❄️')
+
     else:
         bot.reply_to(message, 'Город указан не верно')
+
+
 
 bot.polling()
